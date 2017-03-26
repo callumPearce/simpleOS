@@ -37,6 +37,7 @@ int find_prio( char* prio ){
 extern void main_P3();
 extern void main_P4();
 extern void main_P5();
+extern void main_Waiter();
 
 void* load( char* x ) {
   //puts(x , 2);
@@ -48,6 +49,9 @@ void* load( char* x ) {
   }
   else if( 0 == strcmp( x, "P5" ) ) {
     return &main_P5;
+  }
+  else if( 0 == strcmp( x, "Waiter" ) ){
+    return &main_Waiter;
   }
 
   return NULL;

@@ -146,7 +146,7 @@ int kill( int pid, int x ) {
 
  int pipe( int pid_end2 ){
    int r;
-
+   //write( STDOUT_FILENO, "__pipe__", 8 );
    asm volatile( "mov r0, %2 \n" // assign r0 =  pid_end2
                  "svc %1     \n" // make system call SYS_PIPE
                  "mov %0, r0 \n" // assign r0 =    r
@@ -184,6 +184,10 @@ int pipe_read( int pid_end1 ){
                : "=r" (r)
                : "I" (SYS_PIPE_READ), "r" (pid_end1)
                : "r0" );
+
+    //char* string;
+    //itoa(string,r);
+    //write( STDOUT_FILENO, string, 1 );
 
     return r;
  }

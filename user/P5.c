@@ -14,7 +14,7 @@ void main_P5() {
   while( 1 ) {
     write( STDOUT_FILENO, "P5", 2 );
     //int i = ( int )( pipe_read(2) );
-    if(pipe_read(2) == 50) write( STDOUT_FILENO, "50", 2);
+    //if(pipe_read(2) == 50) write( STDOUT_FILENO, "50", 2);
 
     uint32_t lo = 1 <<  8;
     uint32_t hi = 1 << 24;

@@ -46,7 +46,7 @@ typedef int pid_t;
 #define STDOUT_FILENO ( 1 )
 #define STDERR_FILENO ( 2 )
 
-#define PHILOSOPHER ( 4 )
+#define PHILOSOPHER ( 16 )
 
 // convert ASCII string x into integer r
 extern int  atoi( char* x        );

@@ -19,7 +19,7 @@ extern uint32_t tos_console;
 
 pcb_t pcb[ MAX_PROGS ], *current = NULL;
 
-pipe_t pipe[ MAX_PIPES ];
+pipe_t pipes[ MAX_PIPES ];
 
 pid_t max_pid = 1;
 
@@ -194,7 +194,7 @@ void call_exec( ctx_t* ctx ){
 
 int find_free_pipe(){
   for(int i = 0; i < MAX_PIPES; i++){
-    if(pipe[i].status == TERMINATED) return i;
+    if(pipes[i].status == TERMINATED) return i;
   }
   return -1;
 }
@@ -202,7 +202,7 @@ int find_free_pipe(){
 
 int find_ind_pipe( pipeId_t pipe_id ){
   for(int i = 0; i < MAX_PIPES; i++){
-    if(pipe_id == pipe[i].pipeId && pipe[i].status != TERMINATED) return i;
+    if(pipe_id == pipes[i].pipeId && pipes[i].status != TERMINATED) return i;
   }
   return -1; //Return -1 if there is an error
 }
@@ -216,17 +216,17 @@ void call_pipe( ctx_t* ctx ){
   int pipeInd = find_free_pipe();
 
   //2) Initialise the new pipe as 0
-  memset( &pipe[ pipeInd ], 0, sizeof( pipe_t ) );
+  memset( &pipes[ pipeInd ], 0, sizeof( pipe_t ) );
 
   //3) Fill in the new pipe values
-  pipe[ pipeInd ].pipeId = max_pipe_id;
+  pipes[ pipeInd ].pipeId = max_pipe_id;
   max_pipe_id++;
-  pipe[ pipeInd ].end1   = current->pid;
-  pipe[ pipeInd ].end2   = ctx->gpr[0]; //Recieve (Assume user program knows other programs pid.)
-  pipe[ pipeInd ].status = READY;
+  pipes[ pipeInd ].end1   = current->pid;
+  pipes[ pipeInd ].end2   = ctx->gpr[0]; //Recieve (Assume user program knows other programs pid.)
+  pipes[ pipeInd ].status = READY;
 
   //4) Return the pipe_id
-  ctx->gpr[0] = pipe[ pipeInd ].pipeId;
+  ctx->gpr[0] = pipes[ pipeInd ].pipeId;
   return;
 }
 
@@ -236,23 +236,39 @@ void call_pipe_write( ctx_t* ctx  ){
   //printIt("call_pipe_write",15);
   pipeId_t pipe_id = ctx->gpr[0];
   int pipe_ind = find_ind_pipe( pipe_id );
-  pipe[ pipe_ind ].content = ctx->gpr[2]; //Read data written to the pipe through gpr[1]
+  pipes[ pipe_ind ].content = ctx->gpr[2]; //Read data written to the pipe through gpr[1]
+
+  char* string = "   ";
+  convertInt(string,pipes[ pipe_ind ].content);
+  //printIt(string, 3);
+
   return;
 }
 
 
 //1) Read data from pipe
 void call_pipe_read( ctx_t* ctx ){  //Assuming current program reading is the ctx, the pid is the on of the sender
-  //printIt("call_pipe_read",14);
+
   pid_t pid = ctx->gpr[0];
   for(int i = 0; i < MAX_PIPES; i++){
-    if( (current->pid == pipe[i].end2) && (pid == pipe[i].end1)) {
-      if(pipe[i].status != TERMINATED){
-        int j = pipe[i].content;
-        ctx->gpr[0] = pipe[i].content;
+
+    if( ((current->pid == pipes[i].end1) && (pid == pipes[i].end2)) ) {
+      if(pipes[i].status != TERMINATED){
+        int j = pipes[i].content;
+        ctx->gpr[0] = pipes[i].content;
+        return;
       }
-      else ctx->gpr[0] = -1;
     }
+
+    if( ((current->pid == pipes[i].end2) && (pid == pipes[i].end1)) ) {
+      if(pipes[i].status != TERMINATED){
+        int j = pipes[i].content;
+        ctx->gpr[0] = pipes[i].content;
+        return;
+      }
+    }
+
+    else ctx->gpr[0] = -1;
   }
   return;
 }
@@ -263,8 +279,8 @@ void call_pipe_close( ctx_t* ctx ){
   //printIt("call_pipe_close",15);
   pipeId_t pipe_id = ctx->gpr[0];
   int pipeInd = find_ind_pipe(pipe_id);
-  memset( &pipe[ pipeInd ], 0, sizeof( pipe_t ) ); //Reset data stored.
-  pipe[ pipeInd ].status = TERMINATED; //Set pipe to terminated.
+  memset( &pipes[ pipeInd ], 0, sizeof( pipe_t ) ); //Reset data stored.
+  pipes[ pipeInd ].status = TERMINATED; //Set pipe to terminated.
   return;
 }
 
@@ -292,14 +308,14 @@ void hilevel_handler_rst( ctx_t* ctx              ) {
 
 
   for(int i = 0; i < MAX_PROGS; i++){
-    memset( &pcb[ i ], 0, sizeof( pcb_t ) );
+    //memset( &pcb[ i ], 0, sizeof( pcb_t ) );
     pcb[ i ].status = TERMINATED;
   }
 
 
   for(int i = 0; i < MAX_PIPES; i++){
-    //memset( &pipe[ i ], 0, sizeof( pipe_t ) );
-    pipe[ i ].status = TERMINATED;
+    //memset( &pipes[ i ], 0, sizeof( pipe_t ) );
+    pipes[ i ].status = TERMINATED;
   }
 
   memset( &pcb[ 0 ], 0, sizeof( pcb_t ) );

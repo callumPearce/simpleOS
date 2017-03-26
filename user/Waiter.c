@@ -13,29 +13,48 @@ extern void main_Philosopher();
 
 void main_Waiter(){
 
-  int pipe[ PHILOSOPHER*2 ];
-  int j = 0;
+  int chan[ PHILOSOPHER ]; //1 pipe per Philosopher to tell if eating or thinking
+  int philIds[ PHILOSOPHER ]; //pid's for the Philosophers
+  //int forks[ PHILOSOPHER ];
 
-  //Forks PHILOSOPHER Philosophers programs and Creates 2 pipes per Philosopher
+  //1)Forks PHILOSOPHER Philosophers programs and Creates 2 pipes per Philosopher
   for(int i = 0; i < PHILOSOPHER; i++){
-    pid_t pid = fork();
-    if( 0 == pid ) {
+    philIds[i] = prio_fork(1);
+    if( 0 == philIds[i] ) {
       exec( &main_Philosopher );
       break;
     }
-    pipe[j] = pipe(i);
-    j++;
-    pipe[j] = pipe(i);
-    j++;
+
+    chan[i] = pipe(philIds[i]);
   }
 
-  //Waiter manges the forks
-  bool group1 = TRUE;
-  while(1){
-    if(group1){
-      
-    }
 
+  //2)Initialise what Philosophers can eat
+  for(int j = 0; j < PHILOSOPHER; j++){ //loop through the pipes
+    if(j%2==0) pipe_write(j,1);
+    else pipe_write(j,2);
+  }
+  yield();
+
+
+  //3)Waiter manges the forks
+  //After every round a Philosopher puts their forks down if they have eaten
+  //Waiter reads pipes one by one and if a Philosophers right and left fork are available waiter tells them to eat
+  char* string = "  ";
+  while(1){
+    for(int k = 0; k < PHILOSOPHER; k++){
+
+
+      int x = pipe_read(k+3);
+      char* string;
+      itoa(string,x);
+      //write( STDOUT_FILENO, string, 2 );
+
+      if (x == 1) pipe_write(k,2);
+      if (x == 2) pipe_write(k,1);
+
+    }
+    yield();
 
   }
 

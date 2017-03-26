@@ -29,8 +29,8 @@
  *   preservation and restoration prologue and epilogue, and
  * - a type that captures a process PCB.
  */
-#define MAX_PROGS 5
-#define MAX_PIPES 5
+#define MAX_PROGS 18
+#define MAX_PIPES 16
 #define USERSS 0x00005000
 
 typedef int pid_t;
