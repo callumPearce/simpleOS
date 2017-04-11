@@ -1,37 +1,38 @@
 #include "hilevel.h"
 
-/* Since we *know* there will be 2 processes, stemming from the 2 user
- * programs, we can
- *
- * - allocate a fixed-size process table (of PCBs), and use a pointer
- *   to keep track of which entry is currently executing, and
- * - employ a fixed-case of round-robin scheduling: no more processes
- *   can be created, and neither is able to complete.
- */
-extern void     main_P3();
-extern uint32_t tos_P3;
-extern void     main_P4();
-extern uint32_t tos_P4;
-extern void     main_P5();
-extern uint32_t tos_P5;
+//External definitions for console functions.
 extern void     main_console();
+extern void     main_consoleGUI();
+
+//External definition for the top of stack value for the console.
 extern uint32_t tos_console;
 
+//Frame buffer table which stores all pixels for the GUI.
+uint16_t fb[ 600 ][ 800 ];
+
+//Fixed size PCB table where all processes are stored.
 pcb_t pcb[ MAX_PROGS ], *current = NULL;
 
+//Fixed size PIPE table where all pipes are stored.
 pipe_t pipes[ MAX_PIPES ];
 
+//Global variable used to keep track of the largest process id initialised.
 pid_t max_pid = 1;
 
+//Global variable used to keep track of the largest pipe id initialised.
 pipeId_t max_pipe_id = 0;
 
-//Print function
+
+//Print function used for de-bugging.
 void printIt(char* x, int n){
   for( int i = 0; i < n; i++ ) {
     PL011_putc( UART0, *x++, true );
   }
+  return;
 }
 
+
+//Integer conversion function used for de-bugging.
 void convertInt( char* r, int x ) {
   char* p = r; int t, n;
 
@@ -59,18 +60,6 @@ void convertInt( char* r, int x ) {
   return;
 }
 
-//Find the next pcb index to run based off of priority
-int find_next_index_prio(int ind){
-  int highest_prio = -1;
-  int next_ind = ind;
-  for(int i = 1; i <= MAX_PROGS; i++){
-    if(pcb[(ind+i)%MAX_PROGS].status != TERMINATED && pcb[(ind+i)%MAX_PROGS].priority > highest_prio && (ind+i)%MAX_PROGS != ind){
-        highest_prio = pcb[(ind+i)%MAX_PROGS].priority;
-        next_ind = (ind+i)%MAX_PROGS;
-   }
-  }
-  return next_ind;
-}
 
 //Finds the current pcb index
 int find_pcb_index(int pid){
@@ -80,16 +69,31 @@ int find_pcb_index(int pid){
   return -1; //Return -1 if there is an error
 }
 
-//Find the next pcb index to run
-int find_next_pcb_index(int ind){
-  for(int i = 1; i <= MAX_PROGS; i++){
-    if(pcb[(ind+i)%MAX_PROGS].status != TERMINATED) return (ind+i)%MAX_PROGS;
+
+//Finds the next pcb index to schedule in implements priority scheduling which is
+//explained in the consoleGUI.c file.
+int sched_count = 0;
+int find_next_index_prio(int ind){
+  for(int i = 0; i <= MAX_PROGS; i++){
+    if(pcb[(ind+i)%MAX_PROGS].status != TERMINATED ){
+
+      //Deals with high priority programs i.e. priority above 0.
+      if ((pcb[(ind+i)%MAX_PROGS].priority  >= sched_count) && (pcb[(ind+i)%MAX_PROGS].priority != 0)){
+        sched_count++;
+        return (ind+i)%MAX_PROGS;
+      }
+      if ((pcb[(ind+i)%MAX_PROGS].priority + 1 == sched_count) && (pcb[(ind+i)%MAX_PROGS].priority != 0)) sched_count = 0;
+
+      //Deals with low priority programs i.e. priority of 0.
+      if (pcb[(ind+i)%MAX_PROGS].priority == 0 && (ind+i)%MAX_PROGS != ind) return (ind+i)%MAX_PROGS;
+
+    }
   }
   return -1;
 }
 
 
-//Schedular: Currently Round Robin implementation
+//Schedular: Currently using Priority scheduling scheme.
 void scheduler( ctx_t* ctx) {
   int current_pcb_index = find_pcb_index(current->pid);
   int next_pcb_index = find_next_index_prio(current_pcb_index);
@@ -101,28 +105,28 @@ void scheduler( ctx_t* ctx) {
   return;
 }
 
-//Finds the next available pcb
+
+//Finds the next available pcb i.e. if a pcb is TERMINATED it should be used.
 int find_free_pcb(){
   for(int i = 0; i < MAX_PROGS; i++){
     if(pcb[i].status == TERMINATED) return i;
   }
-  return -1; //Return -1 if there are no available pcb's
+  return -1;
 }
 
-//Call fork but assign a specific priority to the pcb
+
+//Forks a new identical child process but assigns a specific priority to the pcb it has been forked into.
 void call_prio_fork( ctx_t* ctx , int i_prio ){
   //1)Get the new ID by incrementing the largest PCB ID by 1.
   int newID = find_free_pcb();
 
-  //2)Initialise the new process
+  //2)Initialise the new process.
   memset( &pcb[ newID ], 0, sizeof( pcb_t ) );
-  //memcpy( &pcb[ newID ], current , sizeof(pcb_t));
   memcpy( &pcb[ newID ].ctx , ctx , sizeof( ctx_t ));
 
-  //3)Update the process ID
+  //3)Update the process ID.
   pcb[ newID ].pid = max_pid;
   pcb[ newID ].status = READY;
-  //pcb[ 1 ].status = READY;
   max_pid++;
 
   pcb[ newID ].priority = i_prio;
@@ -131,67 +135,72 @@ void call_prio_fork( ctx_t* ctx , int i_prio ){
   int new_stack_entry     = (void*) &tos_console + USERSS * newID;
   int stack_size = current_stack_entry - ctx->sp;
 
-  //4)Update stack pointer value
+  //4)Update stack pointer value.
   pcb[ newID ].ctx.sp = new_stack_entry - stack_size;
 
-  //5)Copy the current programs stack to the new programs stack
+  //5)Copy the current programs stack to the new programs stack.
   memcpy( (void *) new_stack_entry - USERSS , (void *) current_stack_entry - USERSS , USERSS);
 
-  //6)Return zero for the new user process
+  //6)Return zero for the new user process and the pid of the child to the parent process.
   pcb[ newID ].ctx.gpr[0] = 0;
-  //pcb[ newID ].ctx.gpr[1] = newID;
   ctx->gpr[0] = pcb[ newID ].pid;
 
-  //7)Return the newID for the pcb created
+  //7)Return the newID for the pcb created.
   return;
 }
 
-//Fork the current user program
+
+//Fork the current user program with a fixed low priority of 0.
 void call_fork( ctx_t* ctx ) {
   call_prio_fork( ctx , 0 );
   return;
 }
 
-//Exit the current user process accordingly
+
+//Exit the current user process and reset the pcb it's stored in.
 void call_exit( ctx_t* ctx ){
   int current_pcb_index = find_pcb_index(current->pid);
 
-  //Reset Stack
+  //1)Reset Stack
   int current_stack_entry = (void*) &tos_console + USERSS * find_pcb_index(current->pid);
   memset((void *) current_stack_entry - USERSS, 0 , USERSS);
 
-  //Reset relating gpr's
+  //2)Reset relating gpr's
   for(int i = 0; i < 13; i++) ctx->gpr[i] = 0;
 
-  //reset pid,lr,pc and cpsr
+  //3)Reset pid,lr,pc and cpsr
   ctx->sp = current_stack_entry;
   ctx->pc = ctx->gpr[ 0 ];
   ctx->cpsr = 0x50;
   ctx->lr = 0;
 
-  //Set to status to TERMINATED
+  //4)Set to status to TERMINATED
   pcb[current_pcb_index].status = TERMINATED;
 
   return;
 }
 
 
-//1)Reset the stack and stack pointer
-//2)Set the sp to the top of the stack
-//3)Set pc to the passed in gpr value
-//4)Reset gpr's to a value of 0
+//Execute the user program at the pc value specified.
 void call_exec( ctx_t* ctx ){
+  //1)Reset the stack and stack pointer.
   int current_stack_entry = (void*) &tos_console + USERSS * find_pcb_index(current->pid);
   memset((void *) current_stack_entry - USERSS, 0 , USERSS);
   ctx->sp = current_stack_entry;
+
+  //2)Set pc to the passed in gpr value.
   ctx->pc = ctx->gpr[ 0 ];
+
+  //3)Reset gpr's, lr and cpsr to default values.
   ctx->cpsr = 0x50;
   ctx->lr   = 0;
   for(int i = 0; i < 13; i++) ctx->gpr[i] = 0;
+
   return;
 }
 
 
+//Find a free pipe in the pipe table i.e one which is terminated.
 int find_free_pipe(){
   for(int i = 0; i < MAX_PIPES; i++){
     if(pipes[i].status == TERMINATED) return i;
@@ -200,6 +209,7 @@ int find_free_pipe(){
 }
 
 
+//Find the index of a pipe in the pipe table by it's id.
 int find_ind_pipe( pipeId_t pipe_id ){
   for(int i = 0; i < MAX_PIPES; i++){
     if(pipe_id == pipes[i].pipeId && pipes[i].status != TERMINATED) return i;
@@ -207,8 +217,8 @@ int find_ind_pipe( pipeId_t pipe_id ){
   return -1; //Return -1 if there is an error
 }
 
-//1)Allocate pipes
-//2)Return descriptors
+
+//Allocates a pipe in the pipe table using the context passed in and returns the pipes id.
 void call_pipe( ctx_t* ctx ){
   //printIt("call_pipe",9);
 
@@ -231,27 +241,25 @@ void call_pipe( ctx_t* ctx ){
 }
 
 
-//1) Write data to pipe
+//Write data to the pipe_id recieved from the context and update the pipes content
+//value using the context passed in.
 void call_pipe_write( ctx_t* ctx  ){
-  //printIt("call_pipe_write",15);
   pipeId_t pipe_id = ctx->gpr[0];
   int pipe_ind = find_ind_pipe( pipe_id );
-  pipes[ pipe_ind ].content = ctx->gpr[2]; //Read data written to the pipe through gpr[1]
-
-  char* string = "   ";
-  convertInt(string,pipes[ pipe_ind ].content);
-  //printIt(string, 3);
-
+  pipes[ pipe_ind ].content = ctx->gpr[2];
   return;
 }
 
 
-//1) Read data from pipe
-void call_pipe_read( ctx_t* ctx ){  //Assuming current program reading is the ctx, the pid is the on of the sender
+
+//Read data from the pipe and update the context with the value read.
+//Bi-directional communication enabled by this pipe read function.
+void call_pipe_read( ctx_t* ctx ){
 
   pid_t pid = ctx->gpr[0];
   for(int i = 0; i < MAX_PIPES; i++){
 
+    //For the reciever of the pipe attempting to read.
     if( ((current->pid == pipes[i].end1) && (pid == pipes[i].end2)) ) {
       if(pipes[i].status != TERMINATED){
         int j = pipes[i].content;
@@ -259,7 +267,7 @@ void call_pipe_read( ctx_t* ctx ){  //Assuming current program reading is the ct
         return;
       }
     }
-
+    //For the initial creator of the pipe attempting to read.
     if( ((current->pid == pipes[i].end2) && (pid == pipes[i].end1)) ) {
       if(pipes[i].status != TERMINATED){
         int j = pipes[i].content;
@@ -274,19 +282,55 @@ void call_pipe_read( ctx_t* ctx ){  //Assuming current program reading is the ct
 }
 
 
-//1) Close pipe
+//Closes the current pipe by resetting all of its contained values and setting
+//it's status to TERMINATED.
 void call_pipe_close( ctx_t* ctx ){
-  //printIt("call_pipe_close",15);
   pipeId_t pipe_id = ctx->gpr[0];
   int pipeInd = find_ind_pipe(pipe_id);
-  memset( &pipes[ pipeInd ], 0, sizeof( pipe_t ) ); //Reset data stored.
-  pipes[ pipeInd ].status = TERMINATED; //Set pipe to terminated.
+  memset( &pipes[ pipeInd ], 0, sizeof( pipe_t ) );
+  pipes[ pipeInd ].status = TERMINATED;
   return;
 }
 
 
+//Handles reset interrupts.
 void hilevel_handler_rst( ctx_t* ctx              ) {
-  //printIt("Called",6);
+
+  // Configure the LCD display into 800x600 SVGA @ 36MHz resolution.
+
+  SYSCONF->CLCD      = 0x2CAC;     // per per Table 4.3 of datasheet
+  LCD->LCDTiming0    = 0x1313A4C4; // per per Table 4.3 of datasheet
+  LCD->LCDTiming1    = 0x0505F657; // per per Table 4.3 of datasheet
+  LCD->LCDTiming2    = 0x071F1800; // per per Table 4.3 of datasheet
+
+  LCD->LCDUPBASE     = ( uint32_t )( &fb );
+
+  LCD->LCDControl    = 0x00000020; // select TFT   display type
+  LCD->LCDControl   |= 0x00000008; // select 16BPP display mode
+  LCD->LCDControl   |= 0x00000800; // power-on LCD controller
+  LCD->LCDControl   |= 0x00000001; // enable   LCD controller
+
+  /* Configure the mechanism for interrupt handling by
+   *
+   * - configuring then enabling PS/2 controllers st. an interrupt is
+   *   raised every time a byte is subsequently received,
+   * - configuring GIC st. the selected interrupts are forwarded to the
+   *   processor via the IRQ interrupt signal, then
+   * - enabling IRQ interrupts.
+   */
+
+  PS20->CR           = 0x00000010; // enable PS/2    (Rx) interrupt
+  PS20->CR          |= 0x00000004; // enable PS/2 (Tx+Rx)
+  PS21->CR           = 0x00000010; // enable PS/2    (Rx) interrupt
+  PS21->CR          |= 0x00000004; // enable PS/2 (Tx+Rx)
+
+  uint8_t ack;
+
+        PL050_putc( PS20, 0xF4 );  // transmit PS/2 enable command
+  ack = PL050_getc( PS20       );  // receive  PS/2 acknowledgement
+        PL050_putc( PS21, 0xF4 );  // transmit PS/2 enable command
+  ack = PL050_getc( PS21       );  // receive  PS/2 acknowledgement
+
   /* Initialise PCBs representing processes stemming from execution of
    * the two user programs.  Note in each case that
    *
@@ -303,31 +347,39 @@ void hilevel_handler_rst( ctx_t* ctx              ) {
 
    GICC0->PMR          = 0x000000F0; // unmask all            interrupts
    GICD0->ISENABLER1  |= 0x00000010; // enable timer          interrupt
+   GICD0->ISENABLER1 |= 0x00300000; // enable PS2          interrupts
    GICC0->CTLR         = 0x00000001; // enable GIC interface
    GICD0->CTLR         = 0x00000001; // enable GIC distributor
 
 
   for(int i = 0; i < MAX_PROGS; i++){
-    //memset( &pcb[ i ], 0, sizeof( pcb_t ) );
     pcb[ i ].status = TERMINATED;
   }
 
 
   for(int i = 0; i < MAX_PIPES; i++){
-    //memset( &pipes[ i ], 0, sizeof( pipe_t ) );
     pipes[ i ].status = TERMINATED;
   }
 
-  memset( &pcb[ 0 ], 0, sizeof( pcb_t ) );
+  /*
+  memset( &pcb[ 0 ], 0, sizeof( pcb_t ) ); //TODO swap to use without GUI
   pcb[ 0 ].pid      = 1;
   pcb[ 0 ].ctx.cpsr = 0x50;
   pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_console );
   pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
   pcb[ 0 ].status   =  READY;
   pcb[ 0 ].priority = 1;
+  max_pid++;*/
+
+
+  memset( &pcb[ 0 ], 0, sizeof( pcb_t ) );
+  pcb[ 0 ].pid      = 1;
+  pcb[ 0 ].ctx.cpsr = 0x50;
+  pcb[ 0 ].ctx.pc   = ( uint32_t )( &main_consoleGUI );
+  pcb[ 0 ].ctx.sp   = ( uint32_t )( &tos_console );
+  pcb[ 0 ].status   =  READY;
+  pcb[ 0 ].priority = 1;
   max_pid++;
-
-
 
   /* Once the PCBs are initialised, we (arbitrarily) select one to be
    * restored (i.e., executed) when the function then returns.
@@ -337,9 +389,13 @@ void hilevel_handler_rst( ctx_t* ctx              ) {
 
   int_enable_irq();
 
+  ui_refresh();
+
   return;
 }
 
+
+//Handles supervisor interrupt calls.
 void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
   /* Based on the identified encoded as an immediate operand in the
    * instruction,
@@ -350,11 +406,11 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
    */
 
   switch( id ) {
-    case 0x00 : { // 0x00 => yield()
+    case 0x00 : {
       scheduler( ctx );
       break;
     }
-    case 0x01 : { // 0x01 => write( fd, x, n )
+    case 0x01 : {
       int   fd = ( int   )( ctx->gpr[ 0 ] );
       char*  x = ( char* )( ctx->gpr[ 1 ] );
       int    n = ( int   )( ctx->gpr[ 2 ] );
@@ -366,7 +422,7 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       break;
     }
     case 0x03 : {
-      call_fork( ctx );  // 0x03 => fork()
+      call_fork( ctx );
       break;
     }
     case 0x04 : {
@@ -379,25 +435,28 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
       break;
     }
     case 0x07 : {
-      //Some how pass the prio to the call_prio_fork function
       int prio = ( int ) (ctx->gpr[ 0 ]);
       call_prio_fork( ctx , prio );
       break;
     }
-    case 0x08 : { //create pipe
+    case 0x08 : {
       call_pipe( ctx );
       break;
     }
-    case 0x09 : { //write
+    case 0x09 : {
       call_pipe_write( ctx );
       break;
     }
-    case 0x10 : { //read
+    case 0x10 : {
       call_pipe_read( ctx );
       break;
     }
-    case 0x11 : { //close
+    case 0x11 : {
       call_pipe_close( ctx );
+      break;
+    }
+    case 0x12 : {
+      check_prog( ctx );
       break;
     }
     default   : { // 0x?? => unknown/unsupported
@@ -408,20 +467,28 @@ void hilevel_handler_svc( ctx_t* ctx, uint32_t id ) {
   return;
 }
 
+
+//Handles irq interrupt calls.
 void hilevel_handler_irq(ctx_t* ctx) {
-  // Step 2: read  the interrupt identifier so we know the source.
 
   uint32_t id = GICC0->IAR;
 
-  // Step 4: handle the interrupt, then clear (or reset) the source.
 
+  //TIMER INTERRUPT
   if( id == GIC_SOURCE_TIMER0 ) {
     //PL011_putc( UART0, 'c', true );
-    printIt("c",1);
+    printIt("\n",2);
     scheduler(ctx); TIMER0->Timer1IntClr = 0x01;
   }
 
-  // Step 5: write the interrupt identifier to signal we're done.
+  //UI INTERRUPT
+  if     ( id == GIC_SOURCE_PS20 ) {
+    uint8_t x = PL050_getc( PS20 );
+  }
+  else if( id == GIC_SOURCE_PS21 ) {
+    uint8_t x = PL050_getc( PS21 );
+    update_mouse_buffer(x);
+  }
 
   GICC0->EOIR = id;
 

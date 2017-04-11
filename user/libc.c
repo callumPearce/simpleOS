@@ -1,5 +1,7 @@
 #include "libc.h"
 
+extern int find_philosopher_pid();
+
 int  atoi( char* x        ) {
   char* p = x; bool s = false; int r = 0;
 
@@ -158,9 +160,6 @@ int kill( int pid, int x ) {
  }
 
 
-/*TODO this is currently sending contnet on r2, this has been supported in
-hilevel.c by just collecting value from r2 instead (this needs to be fixed).*/
-
  void pipe_write( int pipe_id , int content ){
 
    asm volatile( "mov r0, %1 \n" // assign r0 =  pipe_id
@@ -176,7 +175,6 @@ hilevel.c by just collecting value from r2 instead (this needs to be fixed).*/
 
 int pipe_read( int pid_end1 ){
    int r;
-   write( STDOUT_FILENO, "_", 1 ); //TODO why is this needed in order for function to acutally be called?
 
    asm volatile( "mov r0, %2 \n" // assign r0 =  pid_end1
                  "svc %1     \n" // make system call SYS_PIPE_READ
@@ -185,12 +183,10 @@ int pipe_read( int pid_end1 ){
                : "I" (SYS_PIPE_READ), "r" (pid_end1)
                : "r0" );
 
-    //char* string;
-    //itoa(string,r);
-    //write( STDOUT_FILENO, string, 1 );
 
     return r;
  }
+
 
  void pipe_close( int pipe_id ){
 
@@ -201,4 +197,23 @@ int pipe_read( int pid_end1 ){
                : "r0" );
 
    return;
+ }
+
+
+ int find_philo_pid(){
+   int x = find_philosopher_pid();
+   return x;
+ }
+
+
+ int check_prog_click(){
+   int r;
+
+   asm volatile( "svc %1     \n" // make system call SYS_READ
+                 "mov %0, r3 \n" // assign r  = r3
+               : "=r" (r)
+               : "I" (SYS_CHECK_CLICK)
+               : "r3");
+
+   return r;
  }

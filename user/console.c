@@ -23,6 +23,9 @@ void gets( char* x, int n ) {
 }
 
 int find_prio( char* prio ){
+  if ( 0 == strcmp( prio , "4")) return 4;
+  if ( 0 == strcmp( prio , "3")) return 3;
+  if ( 0 == strcmp( prio , "2")) return 2;
   if ( 0 == strcmp( prio , "1" )) return 1;
   if ( 0 == strcmp( prio , "0")) return 0;
   else return -1;
@@ -38,9 +41,9 @@ extern void main_P3();
 extern void main_P4();
 extern void main_P5();
 extern void main_Waiter();
+extern void main_Dining();
 
 void* load( char* x ) {
-  //puts(x , 2);
   if     ( 0 == strcmp( x, "P3" ) ) {
     return &main_P3;
   }
@@ -52,6 +55,9 @@ void* load( char* x ) {
   }
   else if( 0 == strcmp( x, "Waiter" ) ){
     return &main_Waiter;
+  }
+  else if( 0 == strcmp( x, "Dining")){
+    return &main_Dining;
   }
 
   return NULL;

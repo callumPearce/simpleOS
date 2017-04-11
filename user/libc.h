@@ -35,6 +35,7 @@ typedef int pid_t;
 #define SYS_PIPE_WRITE ( 0x09 )
 #define SYS_PIPE_READ ( 0x10 )
 #define SYS_PIPE_CLOSE ( 0x11 )
+#define SYS_CHECK_CLICK ( 0x12 )
 
 #define SIG_TERM      ( 0x00 )
 #define SIG_QUIT      ( 0x01 )
@@ -85,5 +86,8 @@ extern int pipe_read( int pid_end1 );
 
 // Close the pipe corresponding to the given id.
 extern void pipe_close( int pipe_id );
+
+//Check if a click on a program has been made and return the program code.
+extern int check_prog_click( );
 
 #endif

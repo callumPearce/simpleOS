@@ -19,6 +19,7 @@
 
 #include "lolevel.h"
 #include     "int.h"
+#include   "mouse.h"
 
 /* The kernel source code is made simpler via three type definitions:
  *
@@ -29,13 +30,21 @@
  *   preservation and restoration prologue and epilogue, and
  * - a type that captures a process PCB.
  */
+
+//Defines the max number of programs available in the kernel.
 #define MAX_PROGS 18
+//Defines the max number of pipes available in the kernel.
 #define MAX_PIPES 16
+//Defines the stack size for each user program.
 #define USERSS 0x00005000
 
+//Defines the type for representing process id.
 typedef int pid_t;
+//Defines the type for representing pipe id.
 typedef int pipeId_t;
 
+//Defines the type for representing pipes and programs statuses.
+//NOTE: Some are not used however are included to follow conventions.
 typedef enum {
   CREATED,
   READY,
@@ -44,11 +53,7 @@ typedef enum {
   TERMINATED
 } status_t;
 
-
-typedef struct {
-  uint32_t cpsr, pc, gpr[ 13 ], sp, lr;
-} ctx_t;
-
+//Defines the struct for a pcb.
 typedef struct {
   pid_t pid;
   ctx_t ctx;
@@ -56,6 +61,7 @@ typedef struct {
   int priority;
 } pcb_t;
 
+//Defines the struct for a pipe.
 typedef struct {
   pipeId_t pipeId;
   pid_t end1;
